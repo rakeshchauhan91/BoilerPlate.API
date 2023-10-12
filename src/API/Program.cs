@@ -6,6 +6,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.FeatureManagement;
 using Serilog;
 using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.ResponseCompression;
+using System.IO.Compression;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -39,6 +41,38 @@ builder.Services.AddFeatureManagement()
 builder.Services.AddHealthChecks()
                .AddSqlServer(builder.Configuration.GetConnectionString("MsSqlDb"));
 
+
+builder.Services.Configure<GzipCompressionProviderOptions>(options =>
+{
+    options.Level = CompressionLevel.Fastest;
+});
+builder.Services.AddResponseCompression(options =>
+{
+    options.Providers.Add<GzipCompressionProvider>();
+    options.EnableForHttps = true;
+});
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("dev",
+        policy =>
+        {
+            policy.WithOrigins("http://example.com",
+                                "http://www.contoso.com");
+        });
+
+    options.AddPolicy("prod",
+        policy =>
+        {
+            policy.WithOrigins("http://www.contoso.com")
+            .SetIsOriginAllowedToAllowWildcardSubdomains()
+            .SetPreflightMaxAge(TimeSpan.FromSeconds(2520))
+                                .AllowAnyHeader()
+                                .AllowAnyMethod();
+        });
+});
+
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -50,8 +84,11 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseCors();
+
 app.UseAuthorization();
 
 app.MapControllers();
 
+app.UseResponseCompression();
 app.Run();
